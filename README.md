@@ -24,11 +24,11 @@ Obtained by submitting protein_names_sim.txt, requesting chart for KEGG Pathway 
 prot_path.csv - a table of protein names, where to find them, and the biological pathways in which they are found. This is the result of the data cleaning and reconciliation process.
 
 
-	In order to run 'make_new_sheets.R':
+In order to run 'make_new_sheets.R':  
 1) Download this supplemental data file: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5489383/bin/NIHMS860664-supplement-Supp_info.xlsx,
 which comes from  the following journal article: Nielson, C. M., Wiedrick, J., Shen, J., Jacobs, J., Baker, E. S., Baraff, A., . . . Orwoll, E. S. (2017). Identification of Hip BMD Loss and Fracture Risk Markers Through Population-Based Serum Proteomics. Journal of Bone and Mineral Research, 32(7), 1559-1567. doi:10.1002/jbmr.3125. 
 2) Change the working directory in the very first line to the directory in which the supplemental data file is located.
 
-	In order to run 'pathway_ps.RMD':
+In order to run 'pathway_ps.RMD':  
 1) Download all files in this repository plus the supplemental data file mentioned above into a single directory. 
 2) Change the working directory set in line 1 of 'make_new_sheets.R' and lines 55 and 63 of 'pathway_ps.RMD' into the directory containing the files mentioned above
