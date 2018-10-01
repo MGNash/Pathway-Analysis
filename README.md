@@ -15,7 +15,7 @@ muscle.xlsx, serum_assoc2.xlsx, serum.xlsx
 protein_names_sim.txt - A list of protein names created by running 'make_new_sheets.R'. Submitted to the web-based DAVID pathway analysis tool (https://david.ncifcrf.gov/) in order to obtain pathway analysis results.
 
 	Output from DAVID
-unmapped_sim.txt, gene_list_report_sim.txt, not_in_output_sim.txt, all_genes_chart_sim.txt
+unmapped_sim.txt, gene_list_report_sim.txt, not_in_output_sim.txt, all_genes_chart_sim.txt  
 Obtained by submitting protein_names_sim.txt, requesting chart for KEGG Pathway and selecting Count = 1 and EASE = 1 under Options - Threshold.
 
 prot_path.csv - a table of protein names, where to find them, and the biological pathways in which they are found - clean data created by running 'make_new_sheets.R'
