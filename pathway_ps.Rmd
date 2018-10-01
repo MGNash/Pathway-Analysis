@@ -1,0 +1,454 @@
+---
+title: "Pathway Analysis"
+author: "Michael Nash"
+date: "October 1, 2018"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(readxl)
+source("make_new_sheets.R")
+#library(gpairs)
+```
+
+Data cleaning is the process of turning 'dirty' data into 'clean' data. 'Dirty data' is not ready to analyze because it is ambiguously labeled, contains erroneous or unclear entries or is formatted in a way that makes it difficult to work with. 'Clean' data is clearly labeled and formatted and ready to analyze. Data harmonization is the process of taking data from multiple sources and combining them into a single data source in such a way that the data from the various sources are comparable and can be analyzed, visualized or otherwise understood together. In this project, I demonstrate how to clean and harmonize data from different sources in a way that is reproducable and relatively easy to follow (I hope) using R Markdown.
+
+First, I will provide some background information about this project: Proteins are often part of biological pathways, which are chains of chemical reactions or interactions that occur in a cell to perform biological function such as producing other molecules. The investigators I worked with provided me with lists of proteins found in various sources (muscle samples, serum samples, a subset of proteins found in serum samples that were associated with phenotype measures of interest). Some proteins may be found in more than one source. The investigators were interested in the biological pathways that proteins from various sources are part of, how many proteins from various sources are represented in different pathways, and which pathways are represented by relatively large numbers of proteins from a given source. I used information about biological pathways from the KEGG database, which I accessed through an online interface called DAVID provided by the Laboratory of Human Retrovirology and Immunoinformatics (https://david.ncifcrf.gov/).
+
+I started with the following:
+
+NIHMS860664-supplement-Supp_info.xlsx - A spreadsheet containing a list of proteins found in serum samples in a previous study, included as a supplement in the following journal article:
+
+Nielson, C. M., Wiedrick, J., Shen, J., Jacobs, J., Baker, E. S., Baraff, A., . . . Orwoll, E. S. (2017). Identification of Hip BMD Loss and Fracture Risk Markers Through Population-Based Serum Proteomics. Journal of Bone and Mineral Research, 32(7), 1559-1567. doi:10.1002/jbmr.3125
+
+with full text and supplemental materials available here: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5489383/#SD1
+
+serum_prt_table.jpg - A table containing a list of 28 proteins associated with fat mass, lean BMI or both in serum samples in the same study. I transcribed the protein names from this table into a spreadsheet.
+
+imbsr.xlsx - A spreadsheet containing a list of proteins found in each of six muscle biopsy samples from a pilot study and their levels in the samples.
+
+The second data source is part of an unpublished manuscript, as are my pathway analysis results. The third data source contains biological data from living human research subjects. None of these be shared publicly. In lieu of showing the results I showed my collaborators on this project and including the data I used to generate them, I created a simulated dataset consisting of three files formatted identically to those I used in my actual analysis so that I can demonstrate the methods I used.
+
+The R source file 'make_new_sheets.R,' invoked above, generates the simulated data. Although the selection of protein names from the master list is pseudo-random, it should come out the same way every time because I set random seeds throughout the source file. In order to work, the working directory specified in the first line needs to point to a directory containing the supplement from the Nielson et al 2018 article. It will create the files in that working directory. If this is the same as the working directory for this .RMD file, the files will be there to be read and analyzed, and everything should work seamlessly. For copyright reasons, the supplement is not in this Github repository. Anyone who wants to reproduce this part of the analysis will have to download it themselves.
+
+The files created by the script are as follows:
+
+serum.xlsx - Intended to replace jbmr.xlsx, this spreadsheet contains a subset of the proteins in jbmr.xlsx.
+
+serum_assoc2.xlsx - A spreadsheet containing a list of 28 proteins from among those found in serum.xlsx
+
+muscle.xlsx - Intended to replace imbsr.xls, this spreadsheet contains six sheets, each with a list of proteins randomly picked from a different subset of the proteins in jbmr.xlsx.
+
+I will describe the process of exploring these data sources, as I did with the original data sources they were made to resemble. Obviously, I know what they contain because I created them. I will also be incorporating output from the DAVID tool, which constitutes another data source. From here on, I will refer to the data sources I use as if they were real data from actual experiments.
+
+I began by looking at the three data sources I started out with in more detail.
+
+**serum.xlsx**
+
+This file contains the following sheets:
+
+```{r}
+setwd("C:/Users/Michael Nash/Documents/job search/2018/Github_proj/pathway_analysis")
+excel_sheets("serum.xlsx")
+```
+
+
+The second sheet, entitled "T2. DAVID background list," contains the list of proteins found in serum samples. The other sheets contain results from other types of proteomic analyses and are not of interest. T2 contains a single column. Here are a few of the 2934 entries:
+
+```{r}
+setwd("C:/Users/Michael Nash/Documents/job search/2018/Github_proj/pathway_analysis")
+Serum.sheet = read_excel("serum.xlsx",sheet=2)
+print(paste("# of rows in T2:",dim(Serum.sheet)[1]))
+head(Serum.sheet)
+```
+
+These are protein names of some sort and appear to have two parts. The first seems to consist of five digits and a letter. The second appears to be an organism name. They are separated by an underscore.
+
+```{r}
+Serum.names.df = data.frame(matrix(nrow=dim(Serum.sheet)[1],ncol=2))
+for(i in 1:dim(Serum.sheet)[1]){
+  entry.i = unlist(strsplit(Serum.sheet$`UniProtKB Name`[i],"_",fixed=TRUE))
+  Serum.names.df[i,1] = ifelse(length(entry.i) >= 1, entry.i[1], NA)
+  Serum.names.df[i,2] = ifelse(length(entry.i) >= 2, entry.i[2], NA)
+}
+colnames(Serum.names.df) = c("name_short","org")
+Serum.names.df$org = factor(Serum.names.df$org)
+print("Organism suffix counts:")
+summary(Serum.names.df$org)
+print("length of KB name (minus organism suffix):")
+summary(factor(nchar(Serum.names.df$name_short)))
+```
+
+All KB names are followed by '_HUMAN', suggesting they were all identified as human proteins. The length of the part before this varies from two to five characters.
+
+**muscle.xlsx**
+
+This file contains the following sheets:
+
+```{r}
+name.sheets = excel_sheets("muscle.xlsx")
+length.sheets = rep(NA,6)
+for(i in 1:6){
+  length.sheets[i] = dim(read_excel("muscle.xlsx",sheet=i))[1]
+}
+table.out = rbind(name.sheets,length.sheets)
+rownames(table.out) = c("name","length")
+data.frame(table.out)
+```
+
+There are six sheets, named with the IDs of the six muscle samples, starting with 'sample_1'. Each sheet has 1335 to 1612 rows, with each row corresponding to a protein. They look like this:
+
+```{r}
+head(read_excel("muscle.xlsx",sheet=1))
+```
+
+'Probability' refers to the probability that a given protein is actually present in the sample and not a false positive. 'Log(dSIn)' is a measure of the concentration of that protein in a log scale. I'm not going to use the 'Probability' or 'Log(dSIn)' columns for anything in this analysis. The investigators I am working with asked for pathway analysis with proteins found in the samples, not proteins found in high concentrations or with high probability in the samples. The protein name in 'Protein' seems like it could actually be two names in two different formats stuck together. 'Indistinguishable_Proteins' is blank for most rows, but sometimes contains one or more alter egos for a given protein, like so:
+
+```{r}
+sheet1 = read_excel("muscle.xlsx",sheet=1)
+head(sheet1$Indistinguishable_Proteins[nchar(sheet1$Indistinguishable_Proteins)>1])
+```
+
+The data cleaning/analysis will proceed as follows:
+
+1) Get all protein names into a common format. Determine 'overlap' among sources of proteins.
+2) Determine pathways for each protein using the KEGG database.
+3) Create a table containing all proteins from all sources and listing sources and pathways for each protein.
+4) Generate reports about pathways represented in various sources and proteins in specific pathways found in various sources as requested by the investigators.
+
+I will begin with muscle protein names. As shown above, the names in the spreadsheet each consist of three strings separated with '|' characters. In all the examples we have seen thus far, the first consists of the letters 'sp'. Maybe they all say this. I will call this part a prefix. The second part seems to consist of a letter followed by some digits. I will call this a numeric ID. The third seems to be some letters and digits followed by '_HUMAN'. I will call this a protein name.
+
+To start with, I will read the compound protein names (i.e. the format shown above, with multiple strings separated with a '|' character) in the 'Protein' from each of the six sheets in IMBSR and compile a list of all compound names found in any sample. Later on, I will want to determine which of these are found in all samples and which are found in only some.
+
+```{r}
+Muscle.names.eachsubj = data.frame(matrix(nrow=1500,ncol=6))
+for(i in 1:6){
+  Muscle.sheet=read_excel("muscle.xlsx",sheet=i)
+  Muscle.vect = Muscle.sheet$Protein
+  Muscle.names.eachsubj[1:length(Muscle.vect),i] = Muscle.vect
+}
+Muscle.multi.inAny = unique(unlist(Muscle.names.eachsubj))
+Muscle.multi.inAny = Muscle.multi.inAny[-which(is.na(Muscle.multi.inAny))]
+print(paste("# of unique compound protein names in muscle samples:",length(Muscle.multi.inAny)))
+```
+
+The next step is to make separate lists for the three substrings. I can do this by splitting the strings in the list and putting the elements in a data frame.
+
+```{r}
+Muscle.multi.df = data.frame(matrix(ncol=3,nrow = length(Muscle.multi.inAny)))
+for(i in 1:length(Muscle.multi.inAny)){
+  entry.i = unlist(strsplit(Muscle.multi.inAny[i],"|",fixed=TRUE))
+  Muscle.multi.df[i,1] = ifelse(length(entry.i) >= 1, entry.i[1], NA)
+  Muscle.multi.df[i,2] = ifelse(length(entry.i) >= 2, entry.i[2], NA)
+  Muscle.multi.df[i,3] = ifelse(length(entry.i) >= 3, entry.i[3], NA)
+}
+print("Rows with missing values:")
+Muscle.multi.df[!complete.cases(Muscle.multi.df),]
+```
+
+There is one compound name with a missing component, which has '_BOVIN' in its second string instead of "_HUMAN". It seems like this part of the protein name is a species identifier. In this case, this protein appears to be a cow protein, not a human protein. Even if this protein was in one of the samples and has been identified correctly, it wasn't produced by the body of the research subject who produced the sample and isn't part of any biological pathway in a human being. I will remove it from the table and move on.
+
+```{r}
+pig.prot = which(!complete.cases(Muscle.multi.df))
+Muscle.multi.df = Muscle.multi.df[-pig.prot,]
+
+colnames(Muscle.multi.df) = c("prefix","num_ID","longname")
+Muscle.multi.df$shortname=NA
+Muscle.multi.df$org=NA
+for(i in 1:length(Muscle.multi.df$prefix)){
+  entry.i = unlist(strsplit(Muscle.multi.df$longname[i],"_",fixed=TRUE))
+  Muscle.multi.df[i,4] = ifelse(length(entry.i) >= 1, entry.i[1], NA)
+  Muscle.multi.df[i,5] = ifelse(length(entry.i) >= 2, entry.i[2], NA)
+}
+Muscle.multi.df$prefix = factor(Muscle.multi.df$prefix)
+Muscle.multi.df$org = factor(Muscle.multi.df$org)
+print("Summary counts for prefix and organism suffix values:")
+summary(Muscle.multi.df[,c("prefix","org")])
+```
+
+All remaining entries have the 'sp' prefix before the first name, and all are identified as human proteins. I will denote muscle protein names with the species identifer removed as short names and muscle protein names with the species identifer intact as long names.
+
+```{r}
+head(Muscle.multi.df)
+print("length of numeric IDs:")
+summary(factor(nchar(Muscle.multi.df$num_ID)))
+print("length of \'short names\':")
+summary(factor(nchar(Muscle.multi.df$shortname)))
+
+```
+
+All numeric IDs have the same length. Short names range from 2 to 5 characters.
+
+The six character numeric IDs (one letter and five digits) in the actual muscle sample proteomics results are UniProt Accession identifiers, a type of protein/gene identifier. Because I do not actually use them for anything, the numeric IDs in the simulated data are just random strings of characters that look like UniProt Accession IDs. Likewise, the 'Probability' and 'Log(dSIn)' values in the simulated muscle protein data are random numbers and don't mean anything.
+
+Which of the muscle proteins found in at least one sample are found in all samples?
+
+```{r}
+# determining which proteins were found in all samples
+getKBname = function(x)
+{ x1 = strsplit(x,"|",fixed=TRUE)[[1]][3]
+return(x1)
+}
+
+Muscle.ineach = rep(list(NULL),6)
+for(i in 1:6){
+  sheet.i = read_excel("muscle.xlsx",sheet=i)
+  Muscle.ineach[[i]] = unlist(lapply(sheet.i$Protein,getKBname))
+}
+Muscle.multi.df$inall = (
+  (Muscle.multi.df$longname %in% Muscle.ineach[[1]])&
+  (Muscle.multi.df$longname %in% Muscle.ineach[[2]])&
+  (Muscle.multi.df$longname %in% Muscle.ineach[[3]])&
+  (Muscle.multi.df$longname %in% Muscle.ineach[[4]])&
+  (Muscle.multi.df$longname %in% Muscle.ineach[[5]])&
+  (Muscle.multi.df$longname %in% Muscle.ineach[[6]]))
+summary(Muscle.multi.df$inall)
+```
+
+
+**Indistinguishable Proteins**
+
+There are also proteins listed in the muscle protein spreadsheets as 'Indistinguishable Proteins'. As explained above, these are possible alternate identities for some of the proteins detected. They appear in the same format as muscle proteins' primary identities.
+
+```{r}
+IP.list <- rep(list(NULL),6)
+for(i in 1:6){
+  sheet.i=read_excel("muscle.xlsx",sheet=i)
+  prot.i = unlist(strsplit(sheet.i$Indistinguishable_Proteins,"; ",fixed=TRUE))
+  protvect.i = unique(prot.i[prot.i != "-"])
+  IP.list[[i]] = protvect.i
+}
+prot.IP = unique(unlist(IP.list))
+
+IP.multi.df = data.frame(matrix(ncol=5,nrow = length(prot.IP)))
+for(i in 1:length(prot.IP)){
+  entry.i = unlist(strsplit(prot.IP[i],"|",fixed=TRUE))
+  IP.multi.df[i,1] = ifelse(length(entry.i) >= 1, entry.i[1], NA)
+  IP.multi.df[i,2] = ifelse(length(entry.i) >= 2, entry.i[2], NA)
+  IP.multi.df[i,3] = ifelse(length(entry.i) >= 3, entry.i[3], NA)
+  entry.i2 = unlist(strsplit(entry.i[3],"_",fixed=TRUE))
+  IP.multi.df[i,4] = ifelse(length(entry.i2) >= 1, entry.i2[1], NA)
+  IP.multi.df[i,5] = ifelse(length(entry.i2) >= 2, entry.i2[2], NA)
+}
+colnames(IP.multi.df) = c("prefix","num_ID","longname","shortname","org")
+print("Rows with missing values:")
+IP.multi.df[!complete.cases(IP.multi.df),]
+print("prefix and species identifier:")
+summary(factor(IP.multi.df$prefix))
+summary(factor(IP.multi.df$org))
+print("length of numeric IDs:")
+summary(factor(nchar(IP.multi.df$num_ID)))
+print("length of \'short names\':")
+summary(factor(nchar(IP.multi.df$shortname)))
+```
+
+None have missing components. All are from humans. All prefixes are 'sp'. Numeric IDs are all 6 characters long. Short names range from 2 to 5 characters.
+
+**serum_assoc2.xlsx**
+
+Here are the 28 proteins in serum associated with phenotype measures.
+
+```{r}
+(Serum.assoc.names = read_xlsx("serum_assoc2.xlsx",col_names=FALSE)$X__1[-29])
+```
+
+I now needed to convert all names to a common format. To summarize, I had...
+1) serum protein names that look like this: KIF5A_HUMAN, DLGP5_HUMAN, MYG_HUMAN, RECQ4_HUMAN
+2) Muscle protein names that look like this: YS027_HUMAN, K2C6B_HUMAN, CNDP2_HUMAN, TSP2_HUMAN
+3) Muscle numeric IDs that look like this: Q43333, Q49293, Q77477, P20289
+4) Serum phenotype-associated protein names that look like this: CABL2, FRMD7, REG1B, SRBS2
+
+It would be convenient if the serum protein names and muscle protein names that end in '_HUMAN' were equivalent. If so, we would expect some of them to match.
+
+```{r}
+print("Muscle names that match serum names:")
+summary(Muscle.multi.df$shortname %in% Serum.names.df$name_short)
+```
+
+Many of the do.
+
+If serum phenotype-associated protein names are also in the same format as serum protein names, then the names in the first collection should all be found in the second.
+
+```{r}
+print("Serum phenotype-associated protein names that match serum protein names:")
+summary(Serum.assoc.names %in% Serum.names.df$name_short)
+```
+
+They are.
+
+I now have everything in one format. I will now compile a master list of all protein names to submit to the DAVID tool.
+
+```{r}
+all.protein.names = unique(c(as.character(Serum.sheet$`UniProtKB Name`),Muscle.multi.df$longname,IP.multi.df$longname))
+write.table(all.protein.names,"protein_names_sim.txt",sep="\n",col.names = FALSE,row.names = FALSE,quote=FALSE)
+
+```
+
+Based on the heading of the column of protein names in the serum protein spreadsheet, I selected 'UNIPROT_ID' as the type of identifier. 4491 of the 4767 names were identified as human proteins. Some were identified as being from unknown species. I was reasonably sure that all these were human proteins, both because they were labeled as such, as because they came from human serum or muscle samples. 
+
+I obtained four types of output from DAVID: a functional annotation chart, a list of protein/gene names not found in the functional annotation chart, a gene list report, and a list of unmapped protein/gene names not found in the DAVID database. The code in this .RMD file does not replicate this part of the analysis. Anyone who wishes to do so will need to visit the website mentioned above, manually submit the file "protein_names_sim.txt" created by this script, and save the results as "all_genes_chart_sim.txt", "not_in_output_sim.txt", "gene_list_report_sim.txt" and "unmapped_sim.txt". These files are also included in the repository for convenience.
+
+The gene list report indicates the species of each gene. As any students of molecular biology are probably aware, each protein is coded by a single gene, and each gene codes for a single protein. Thus, protein identifiers are also gene identifiers.
+
+```{r}
+DAVID.chart = read.delim("all_genes_chart_sim.txt",sep="\t")
+Not.in.output = read.delim("not_in_output_sim.txt",sep="\t")
+gene.list.report = read.delim("gene_list_report_sim.txt",sep="\t")
+unmapped = read.delim("unmapped_sim.txt",sep="\t",header=FALSE)
+summary(gene.list.report$Species)
+```
+
+These are a few of the genes from unknown species.
+
+```{r}
+head(all.protein.names[all.protein.names %in% gene.list.report$Name])
+```
+
+I also have list of protein names which could not be matched to entries in the DAVID gene database. Here are the first few:
+
+```{r}
+head(as.character(unmapped$V1))
+                       #Not_human = all.protein.names %in% gene.list.report$Name,
+                        #No_pathways = all.protein.names %in% rownames(Not.in.output),
+                        #Unmapped  = all.protein.names %in% unmapped$V1)
+```
+
+
+Perhaps not surprisingly, the proteins that failed to map to  are the same ones for whom the species could not be determined. 
+
+```{r}
+
+table.out = table(all.protein.names %in% gene.list.report$Name, all.protein.names %in% unmapped$V1)
+#, colClasses = 
+colnames(table.out) = c("Human","Unknown")
+rownames(table.out) = c("Matched","Unmatched")
+table.out
+```
+
+
+Hopefully, the investigators can determine why these gene names are not being recognized by DAVID and rectify this issue. 
+
+Each row in the a functional annotation chart corresponds to one of 297 pathways containing proteins in the list I submitted. Here are the first few:
+
+```{r}
+head(DAVID.chart$Term)
+```
+
+Each row also contains a list of proteins among those I submitted found in that pathway. Here is the beginning of the protein list for the first row in the table, corresponding to 'hsa01200:Carbon metabolism'.
+
+```{r}
+substr(DAVID.chart$Genes[1],1,93)
+```
+
+The last type of output is a list of all the protein/gene names that were not found in a biological pathway. Here is a sample:
+
+```{r}
+head(rownames(Not.in.output))
+```
+
+One would expect to find all of these in the list of protein names obtained from the various sources and submitted to DAVID. In fact, there is one entry from the list of proteins not in pathways returned by DAVID which is not in the list of protein names I compiled:
+
+```{r}
+print("")
+rownames(Not.in.output)[which(!(rownames(Not.in.output) %in% all.protein.names))]
+```
+
+This name is actually two names stuck together with a comma and space in between. That's why it doesn't match any of the protein names in my list. Fortunately, there are proteins in my list called "NACAM_HUMAN" and "NACA_HUMAN". I will have to manually add these protein to the list of proteins not in pathways.
+
+I assembled a data frame with a row for each protein and columns indicating the presence of various proteins in various sources. Here is a summary showing how many proteins are and are not found in each source.
+
+```{r}
+# turning serum phenotype-associated protein short names into long names
+assoc.namelong = paste0(Serum.assoc.names,"_HUMAN")
+
+protein.df = data.frame(Protein_Name = as.character(all.protein.names),
+                        Serum= all.protein.names %in% Serum.sheet$`UniProtKB Name`,
+                        Serum_Assoc = all.protein.names %in% assoc.namelong,
+                        Muscle_Any = all.protein.names %in% Muscle.multi.df$longname,
+                        Muscle_All =  all.protein.names %in% Muscle.multi.df$longname[Muscle.multi.df$inall],
+                        No_pathways = all.protein.names %in% rownames(Not.in.output),
+                        Unmapped  = all.protein.names %in% unmapped$V1)
+protein.df$Protein_Name = as.character(protein.df$Protein_Name)
+protein.df$No_pathways[all.protein.names == "NACAM_HUMAN"] = TRUE
+protein.df$No_pathways[all.protein.names == "NACA_HUMAN"] = TRUE
+summary(protein.df)
+```
+
+If the investigators are interested in the associations between proteins in muscle samples and phenotypes and how these recapitulate the associations between proteins in serum samples and phenotypes (or fail to do so), they might want to focus on proteins that are found in both serum and muscle. I used the data frame assembled above to generate some tables showing the overlap between proteins found in serum and muscle samples.
+
+```{r}
+print("Overlap between proteins in serum and any muscle sample:")
+table(protein.df$Serum,protein.df$Muscle_Any)
+print("Overlap between proteins in serum and all muscle sample:")
+table(protein.df$Serum,protein.df$Muscle_All)
+print("Overlap between proteins associated with phenotypes in serum and any muscle sample:")
+table(protein.df$Serum_Assoc,protein.df$Muscle_Any)
+print("Overlap between proteins associated with phenotypes in serum and all muscle sample:")
+table(protein.df$Serum_Assoc,protein.df$Muscle_All)
+```
+
+I assembled the functional annotation results into a table with each row corresponding to a protein (as in the table above), each column corresponding to a pathway, and each entry indicating whether a specific protein is found in a specific pathway. This can be used to provide information about sets of proteins and pathways, such as which pathways contain the most proteins from a given source, how many proteins are in each pathway from each source, and which proteins from a given source are in a given pathway. Here are some examples in which I list numbers or names of proteins from top 5 pathways (i.e. those with the most proteins) for a given data source or the overlap between multiple sources.
+
+```{r}
+pathway.df = data.frame(matrix(nrow=length(all.protein.names),ncol=length(DAVID.chart$Term)))
+rownames(pathway.df) = all.protein.names
+colnames(pathway.df) = DAVID.chart$Term
+
+for(i in 1:length(DAVID.chart$Term)){
+  protvect = unlist(strsplit(as.character(DAVID.chart$Genes[i]),", "))
+  pathway.df[which(all.protein.names %in% protvect),i] = TRUE
+}
+sumtrue = function(x){return(sum(x==TRUE))}
+
+pathway.df[is.na(pathway.df)] = FALSE
+```
+```{r}
+print("Total number of proteins all pathways combined:")
+sum(pathway.df==TRUE)
+
+print("Total number of unmapped proteins all pathways combined (should be zero):")
+sum(pathway.df[protein.df$Unmapped,]==TRUE)
+
+print("Total number of 'no pathway' proteins all pathways combined (should be zero):")
+sum(pathway.df[protein.df$No_pathways,]==TRUE)
+
+print("# of proteins in serum and any muscle sample in top 5 pathways:")
+pathlist.long = apply(pathway.df[protein.df$Serum&protein.df$Muscle_Any,],2,sumtrue)
+pathlist.short = pathlist.long[pathlist.long>0]
+pathlist.short = pathlist.short[order(pathlist.short,decreasing=TRUE)]
+(pathlist.short[1:5])
+
+print("# of proteins in serum and all muscle samples in top 5 pathways:")
+pathlist.long = apply(pathway.df[protein.df$Serum&protein.df$Muscle_All,],2,sumtrue)
+pathlist.short = pathlist.long[pathlist.long>0]
+pathlist.short = pathlist.short[order(pathlist.short,decreasing=TRUE)]
+(pathlist.short[1:5])
+
+print("# of phenotype-associated serum proteins in top 5 pathways:") 
+pathlist.long = apply(pathway.df[protein.df$Serum_Assoc,],2,sumtrue)
+pathlist.short = pathlist.long[pathlist.long>0]
+pathlist.short = pathlist.short[order(pathlist.short,decreasing=TRUE)]
+(pathlist.short[1:5])
+
+
+print("Names of phenotype-associated serum proteins in top 5 pathways:")
+top5 = names(pathlist.short[1:5])
+for(path in top5){
+  print(path)
+  prot.IDs = rownames(pathway.df)[(pathway.df[,path] == TRUE)&(protein.df$Serum_Assoc==TRUE)]
+  print((prot.IDs))
+}
+```
+
+In addition to providing answers to specific queries about proteins and pathways, I gave them a CSV file containing information about both protein sources and pathways combining the two tables described above. Each row corresponds to a protein. The first seven columns indicate whether each protein can be found in a given source. The other 286 columns indicate whether each protein can be found in a given pathway. This way, the investigators are able answer any questions they come up with later about proteins, sources and pathways without my help. The code in this R Markdown document will generate a file called "prot_path.csv" using the other files in this repository. This is the final product: clean data that the investigators can use to conduct additional analyses as they wish.
+
+```{r}
+prot.path.df = cbind(protein.df,pathway.df)
+# writing table to CSV file
+write.csv(prot.path.df,"prot_path.csv",row.names=FALSE)
+```
+

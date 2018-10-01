@@ -1,0 +1,3 @@
+make sure NACA_HUMAN, NACAS_HUMAN is in there
+
+Looks like they were both in the original and got collapsed into one. Do that with the simulated data? Also, find out where they are both from
