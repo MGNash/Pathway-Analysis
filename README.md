@@ -3,7 +3,7 @@ Data cleaning/reconciliation and KEGG pathway analysis for proteins collected fr
 
 This repository contains the following:
 
-	Methods and results summary:
+	Methods and results summary
 pathway_ps.pdf - A document describing the methods and results of the data cleaning/reconciliation and pathway analysis I performed. If you are not interested in reproducing the analysis or viewing the code, go straight to this document and skip all the others.
 
 	Source files
